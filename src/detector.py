@@ -1,5 +1,12 @@
 from datetime import datetime,timedelta
 
+ANALYSIS_DIMENSIONS = [
+    "provider",
+    "bank",
+    "method",
+    "geo"
+]
+
 def calculate_failure_rate(events):
     if not events:
         return 0.0
@@ -90,11 +97,7 @@ def detect_anomalies(events,threshold_multiplier=2.0,window_minutes=60):
         if len(window_events)<10:  #ignore very small windows as they are not statistically useful
             continue
         failure_rate=calculate_failure_rate(window_events)
-        print(
-            f"{window['start']} → {window['end']} | "
-            f"transactions: {len(window_events)} | "
-            f"failure rate: {failure_rate:.2f}%"
-        )
+        
         threshold=baseline_failure_rate*threshold_multiplier
         if failure_rate>threshold:
             anomalies.append({
@@ -145,3 +148,73 @@ def detect_dimension_anomalies(events,dimension,threshold_multiplier=2.0,min_tra
     return anomalies        
 
 
+def detect_dimension_anomalies_by_window(events,dimension,threshold_multiplier=2.0,min_absolute_increase=10.0,min_transactions=10):
+    """
+    Detect dimension-specific anomalies inside time windows.
+
+    Each dimension value is compared against its own historical
+    failure-rate baseline.
+
+    Example for dimension="provider":
+
+        provider_z baseline  -> 8%
+        provider_z current   -> 20%
+
+    The provider is flagged when:
+
+        1. Current failure rate is greater than
+           baseline × threshold_multiplier
+
+        AND
+
+        2. Current failure rate exceeds the baseline by at least
+           min_absolute_increase percentage points.
+
+    This combination reduces false positives caused by
+    small proportional changes in low-failure-rate dimensions.
+
+    """
+
+    if not events:
+        return []
+    
+    windows=create_time_windows(events)
+    dimension_values=set(getattr(event,dimension) for event in events)
+
+    baselines={}
+    for value in dimension_values:
+        matching_events=filter_events_by_dimension(events,dimension,value)
+        if len(matching_events)>=min_transactions:
+            baselines[value]=calculate_failure_rate(matching_events)
+    
+    anomalies=[]
+    for window in windows:
+        window_events=window["events"]
+        if len(window_events)<min_transactions:
+            continue
+        for value,baseline_failure_rate in baselines.items():
+            dimensions_events=filter_events_by_dimension(window_events,dimension,value)
+
+            if len(dimensions_events)<min_transactions:
+                continue
+            window_failure_rate=calculate_failure_rate(dimensions_events)
+            relative_threshold=baseline_failure_rate*threshold_multiplier
+            absolute_increase=window_failure_rate-baseline_failure_rate
+            if window_failure_rate>relative_threshold and absolute_increase>=min_absolute_increase:
+                anomalies.append({
+                    "start":window["start"],
+                    "end":window["end"],
+                    "dimension":dimension,
+                    "value":value,
+                    "failure_rate":window_failure_rate,
+                    "baseline_failure_rate":baseline_failure_rate,
+                    "threshold":relative_threshold,
+                    "relative_increase": (
+                        window_failure_rate / baseline_failure_rate
+                        if baseline_failure_rate > 0
+                        else float("inf")
+                    ),
+                    "absolute_increase": absolute_increase,
+                    "transaction_count": len(dimensions_events)
+                })
+    return anomalies

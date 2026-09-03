@@ -1,7 +1,7 @@
 from generator import generate_events
 from aggregate import aggregate_events
 from datetime import datetime
-from detector import detect_anomalies
+from detector import detect_anomalies, detect_dimension_anomalies_by_window
 
 events=generate_events(1000)
 
@@ -60,13 +60,67 @@ print(f"Failed amount      : ₹{metrics['failed_amount']}")
 
 anomalies = detect_anomalies(events)
 
-print("\nDetected Anomalies")
+print("\nSystem-wide Anomalies")
+print("---------------------")
+
+if not anomalies:
+    print("None")
+else:
+    for anomaly in anomalies:
+        print(
+            f"{anomaly['start']} → {anomaly['end']} | "
+            f"failure rate: {anomaly['failure_rate']:.2f}% | "
+            f"baseline: {anomaly['baseline_failure_rate']:.2f}%"
+        )
+
+print("\nProvider Anomalies")
 print("------------------")
 
-for anomaly in anomalies:
-    print(
-        f"{anomaly['start']} → {anomaly['end']} | "
-        f"failure rate: {anomaly['failure_rate']:.2f}% | "
-        f"baseline: {anomaly['baseline_failure_rate']:.2f}% | "
-        f"transactions: {anomaly['transaction_count']}"
-    )
+provider_anomalies = detect_dimension_anomalies_by_window(
+    events,
+    dimension="provider"
+)
+
+if not provider_anomalies:
+    print("None")
+else:
+    for anomaly in provider_anomalies:
+        print(
+            f"{anomaly['start']} → {anomaly['end']} | "
+            f"{anomaly['value']} | "
+            f"failure rate: {anomaly['failure_rate']:.2f}% | "
+            f"baseline: {anomaly['baseline_failure_rate']:.2f}% | "
+            f"increase: {anomaly['absolute_increase']:.2f} pp | "
+            f"relative: {anomaly['relative_increase']:.2f}x | "
+            f"transactions: {anomaly['transaction_count']}"
+        )
+
+# print("\nDetected Anomalies")
+# print("------------------")
+
+# for anomaly in anomalies:
+#     print(
+#         f"{anomaly['start']} → {anomaly['end']} | "
+#         f"failure rate: {anomaly['failure_rate']:.2f}% | "
+#         f"baseline: {anomaly['baseline_failure_rate']:.2f}% | "
+#         f"transactions: {anomaly['transaction_count']}"
+#     )
+
+# provider_anomalies = detect_dimension_anomalies_by_window(
+#     events,
+#     dimension="provider"
+# )
+
+# print("\nProvider Anomalies")
+# print("------------------")
+
+# for anomaly in provider_anomalies:
+#     print(
+#         f"{anomaly['start']} → {anomaly['end']} | "
+#         f"{anomaly['value']} | "
+#         f"failure rate: {anomaly['failure_rate']:.2f}% | "
+#         f"baseline: {anomaly['baseline_failure_rate']:.2f}% | "
+#         f"increase: {anomaly['absolute_increase']:.2f} pp | "
+#         f"relative: {anomaly['relative_increase']:.2f}x | "
+#         f"transactions: {anomaly['transaction_count']}"
+#     )
