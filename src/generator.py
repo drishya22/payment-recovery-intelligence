@@ -43,7 +43,7 @@ PEAK_HOUR_EFFECT = -0.10
 def sigmoid(z):
     return 1 / (1 + math.exp(-z))
 
-def calculate_success_probability(method, bank, provider, timestamp):
+def calculate_success_probability(method, bank, provider, timestamp, provider_z_degraded=False):
     z = (
         INTERCEPT
         + METHOD_EFFECTS[method]
@@ -54,30 +54,85 @@ def calculate_success_probability(method, bank, provider, timestamp):
     if 14 <= timestamp.hour <= 19:
         z += PEAK_HOUR_EFFECT
 
+    #simulated incident: when provider_z is degraded, its success probability drops significantly
+    if provider_z_degraded and provider=="provider_z":
+        z-=2.0
+
     return sigmoid(z)    
 
 
-def generate_payment_event():
+def generate_payment_event(timestamp,trans_id,provider_z_degraded=False):
+    """
+    Generate one synthetic payment event.
+
+    This function represents the behaviour of a single payment:
+    - randomly chooses payment attributes
+    - calculates probability of success
+    - samples the final payment outcome
+    """
+
     bank=random.choice(list(BANK_EFFECTS.keys()))
     provider=random.choice(list(PROVIDER_EFFECTS.keys()))
     method=random.choice(list(METHOD_EFFECTS.keys()))
     geo=random.choice(GEOGRAPHIES)
-    
-    start_time=datetime(2026,9,1,9,0,0)
-
-    timestamp=start_time+timedelta(seconds=random.randint(0,50400))
 
     amount=random.randint(100,10000)
-  
-    status="failed"
-    trans_id=1 #generate unique and random ids
-    result=calculate_success_probability(method,bank,provider,timestamp)
-    if random.random()<result: ## Sample the payment outcome according to its success probability. 
-        status="success"
 
-    if status=="success":
-        event=PaymentEvent(trans_id,amount,method,bank,provider,timestamp,geo,status)
+    success_probability=calculate_success_probability(method, bank, provider, timestamp, provider_z_degraded)
+    # Randomly determine the actual outcome according to
+    # the calculated probability.
+    if random.random() < success_probability:
+        status = "success"
+        error_code = None
     else:
-        event=PaymentEvent(trans_id,amount,method,bank,provider,timestamp,geo,status,400) ##random error code for now
-    return event    
+        status = "failed"
+        error_code = 400       # Temporary generic failure code.
 
+
+    # Create and return the payment event.
+    return PaymentEvent(
+        trans_id,
+        amount,
+        method,
+        bank,
+        provider,
+        timestamp,
+        geo,
+        status,
+        error_code
+    )  
+
+def generate_events(num_events):
+    """
+    Generate a chronological stream of synthetic payment events.
+    num_events: Number of ayment events to generate
+    Returns: A list of PaymentEvent objects ordered by timestamp
+    """
+
+    events=[]
+
+    current_timestamp=datetime(2026,9,3,9,0,0)
+    incident_start=datetime(2026,9,3,10,30,0)
+    incident_end=datetime(2026,9,3,11,30,0)
+
+    for trans_id in range(1,num_events+1):
+        provider_z_degraded=(incident_start<=current_timestamp<incident_end)
+        event=generate_payment_event(
+            current_timestamp,
+            trans_id,
+            provider_z_degraded
+        )
+        events.append(event)
+        time_gap=random.randint(1,60)
+        current_timestamp+=timedelta(seconds=time_gap)
+
+        
+    print("Simulation start:", events[0].timestamp)
+    print("Simulation end:", events[-1].timestamp)
+    return events
+
+
+if __name__=="__main__":
+    events=generate_events(10)
+    for event in events:
+        print(event.id,event.timestamp,event.method,event.bank,event.provider,event.status)    
