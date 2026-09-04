@@ -4,6 +4,14 @@ from datetime import datetime
 from detector import detect_anomalies, detect_dimension_anomalies_by_window
 from diagnosis import diagnose_incident
 from impact import calculate_impact
+from recover import (
+    identify_recovery_candidates,
+    choose_fallback_provider,
+    select_recovery_batch,
+    execute_recovery,
+    verify_recovery,
+    create_recovery_audit
+)
 
 events=generate_events(10000)
 
@@ -155,3 +163,68 @@ if impact:
     print(f"Payment value at risk : ₹{impact['failed_amount']}")
 else:
     print("No impact calculated.")
+
+
+fallback_provider = choose_fallback_provider(
+    events,
+    diagnosis["value"]
+)
+
+print("\nRecovery Decision")
+print("-----------------")
+print(f"Degraded provider : {diagnosis['value']}")
+print(f"Fallback provider : {fallback_provider}")    
+
+candidates = identify_recovery_candidates(events, diagnosis)
+
+recovery_batch = select_recovery_batch(candidates)
+
+print(f"Recovery candidates : {len(candidates)}")
+print(f"Selected for retry  : {len(recovery_batch)}")
+
+recovery_results = execute_recovery(
+    recovery_batch,
+    fallback_provider
+)
+
+recovered = [
+    result
+    for result in recovery_results
+    if result["status"] == "recovered"
+]
+
+recovered_amount = sum(
+    result["amount"]
+    for result in recovered
+)
+
+print("\nRecovery Execution")
+print("------------------")
+print(f"Retry attempts    : {len(recovery_results)}")
+print(f"Recovered payments: {len(recovered)}")
+print(f"Recovered value   : ₹{recovered_amount}")
+
+verification = verify_recovery(recovery_results)
+
+print("\nRecovery Verification")
+print("---------------------")
+print(f"Attempts         : {verification['attempted']}")
+print(f"Recovered        : {verification['recovered']}")
+print(f"Recovery rate    : {verification['recovery_rate']:.2f}%")
+print(f"Recovered value  : ₹{verification['recovered_amount']}")
+
+
+audit = create_recovery_audit(
+    diagnosis,
+    fallback_provider,
+    recovery_results
+)
+
+print("\nRecovery Audit")
+print("--------------")
+print(f"Action           : {audit['action']}")
+print(f"Original provider: {audit['original_provider']}")
+print(f"Fallback provider: {audit['fallback_provider']}")
+print(f"Retry attempts   : {audit['retry_attempts']}")
+print(f"Recovered        : {audit['recovered_transactions']}")
+print(f"Recovered value  : ₹{audit['recovered_amount']}") 
