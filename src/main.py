@@ -2,6 +2,7 @@ from generator import generate_events
 from aggregate import aggregate_events
 from datetime import datetime
 from detector import detect_anomalies, detect_dimension_anomalies_by_window
+from diagnosis import diagnose_incident
 
 events=generate_events(1000)
 
@@ -124,3 +125,19 @@ else:
 #         f"relative: {anomaly['relative_increase']:.2f}x | "
 #         f"transactions: {anomaly['transaction_count']}"
 #     )
+
+diagnosis = diagnose_incident(provider_anomalies)
+
+print("\nIncident Diagnosis")
+print("------------------")
+
+if diagnosis:
+    print(f"Type       : {diagnosis['type']}")
+    print(f"Dimension  : {diagnosis['dimension']}")
+    print(f"Value      : {diagnosis['value']}")
+    print(f"Failure    : {diagnosis['failure_rate']:.2f}%")
+    print(f"Baseline   : {diagnosis['baseline_failure_rate']:.2f}%")
+    print(f"Increase   : {diagnosis['absolute_increase']:.2f} pp")
+    print(f"Relative   : {diagnosis['relative_increase']:.2f}x")
+else:
+    print("No incident diagnosed.")
