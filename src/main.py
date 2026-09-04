@@ -1,6 +1,5 @@
 from generator import generate_events
 from aggregate import aggregate_events
-from datetime import datetime
 from detector import detect_anomalies, detect_dimension_anomalies_by_window
 from diagnosis import diagnose_incident
 from impact import calculate_impact
@@ -13,218 +12,174 @@ from recover import (
     create_recovery_audit
 )
 
-events=generate_events(10000)
 
-metrics=aggregate_events(events)
+def run_recovery_analysis(num_events=10000):
+    """
+    Run the complete payment recovery intelligence pipeline.
 
-failed_events = [
-    event for event in events
-    if event.status == "failed"
-]
+    Returns:
+        A structured result containing detection, diagnosis,
+        impact, recovery, verification and audit information.
+    """
 
-provider_z_events = [
-    event for event in events
-    if event.provider == "provider_z"
-]
+    # 1. Generate payment events
+    events = generate_events(num_events)
 
-incident_events = [
-    event for event in provider_z_events
-    if (
-        event.timestamp >= datetime(2026, 9, 3, 10, 30)
-        and event.timestamp < datetime(2026, 9, 3, 11, 30)
-    )
-]
-print("\nProvider Z Incident Check")
-print("-------------------------")
+    # 2. Aggregate payment metrics
+    metrics = aggregate_events(events)
 
-print("First event:", events[0].timestamp)
-print("Last event :", events[-1].timestamp)
-print("Incident   : 10:30 - 11:30")
+    # 3. Detect system-wide anomalies
+    anomalies = detect_anomalies(events)
 
-print("\nProvider Z Incident Check")
-print("-------------------------")
-
-print(f"Provider Z transactions during incident: {len(incident_events)}")
-
-if incident_events:
-    incident_failures = [
-        event for event in incident_events
-        if event.status == "failed"
-    ]
-
-    print(f"Failures during incident: {len(incident_failures)}")
-    print(
-        f"Failure rate during incident: "
-        f"{len(incident_failures) / len(incident_events) * 100:.2f}%"
+    # 4. Detect dimension-specific anomalies
+    provider_anomalies = detect_dimension_anomalies_by_window(
+        events,
+        dimension="provider"
     )
 
-print("Payment Summary")
-print("----------------")
-print(f"Total transactions : {metrics['total_transactions']}")
-print(f"Successful         : {metrics['successful_transactions']}")
-print(f"Failed             : {metrics['failed_transactions']}")
-print(f"Success rate       : {metrics['success_rate']:.2f}%")
-print(f"Failure rate       : {metrics['failure_rate']:.2f}%")
-print(f"Total amount       : ₹{metrics['total_amount']}")
-print(f"Failed amount      : ₹{metrics['failed_amount']}")
+    # 5. Diagnose the incident
+    diagnosis = diagnose_incident(provider_anomalies)
 
-anomalies = detect_anomalies(events)
+    if not diagnosis:
+        return {
+            "metrics": metrics,
+            "anomalies": anomalies,
+            "provider_anomalies": provider_anomalies,
+            "diagnosis": None,
+            "impact": None,
+            "recovery": None,
+            "verification": None,
+            "audit": None
+        }
 
-print("\nSystem-wide Anomalies")
-print("---------------------")
+    # 6. Calculate impact
+    impact = calculate_impact(events, diagnosis)
 
-if not anomalies:
-    print("None")
-else:
-    for anomaly in anomalies:
-        print(
-            f"{anomaly['start']} → {anomaly['end']} | "
-            f"failure rate: {anomaly['failure_rate']:.2f}% | "
-            f"baseline: {anomaly['baseline_failure_rate']:.2f}%"
-        )
+    # 7. Choose fallback provider
+    fallback_provider = choose_fallback_provider(
+        events,
+        diagnosis["value"]
+    )
 
-print("\nProvider Anomalies")
-print("------------------")
+    # 8. Identify recovery candidates
+    candidates = identify_recovery_candidates(
+        events,
+        diagnosis
+    )
 
-provider_anomalies = detect_dimension_anomalies_by_window(
-    events,
-    dimension="provider"
-)
+    # 9. Apply recovery limit
+    recovery_batch = select_recovery_batch(candidates)
 
-if not provider_anomalies:
-    print("None")
-else:
-    for anomaly in provider_anomalies:
-        print(
-            f"{anomaly['start']} → {anomaly['end']} | "
-            f"{anomaly['value']} | "
-            f"failure rate: {anomaly['failure_rate']:.2f}% | "
-            f"baseline: {anomaly['baseline_failure_rate']:.2f}% | "
-            f"increase: {anomaly['absolute_increase']:.2f} pp | "
-            f"relative: {anomaly['relative_increase']:.2f}x | "
-            f"transactions: {anomaly['transaction_count']}"
-        )
+    # 10. Execute recovery
+    recovery_results = execute_recovery(
+        recovery_batch,
+        fallback_provider
+    )
 
-# print("\nDetected Anomalies")
-# print("------------------")
+    # 11. Verify recovery
+    verification = verify_recovery(
+        recovery_results
+    )
 
-# for anomaly in anomalies:
-#     print(
-#         f"{anomaly['start']} → {anomaly['end']} | "
-#         f"failure rate: {anomaly['failure_rate']:.2f}% | "
-#         f"baseline: {anomaly['baseline_failure_rate']:.2f}% | "
-#         f"transactions: {anomaly['transaction_count']}"
-#     )
+    # 12. Create audit record
+    audit = create_recovery_audit(
+        diagnosis,
+        fallback_provider,
+        recovery_results
+    )
 
-# provider_anomalies = detect_dimension_anomalies_by_window(
-#     events,
-#     dimension="provider"
-# )
-
-# print("\nProvider Anomalies")
-# print("------------------")
-
-# for anomaly in provider_anomalies:
-#     print(
-#         f"{anomaly['start']} → {anomaly['end']} | "
-#         f"{anomaly['value']} | "
-#         f"failure rate: {anomaly['failure_rate']:.2f}% | "
-#         f"baseline: {anomaly['baseline_failure_rate']:.2f}% | "
-#         f"increase: {anomaly['absolute_increase']:.2f} pp | "
-#         f"relative: {anomaly['relative_increase']:.2f}x | "
-#         f"transactions: {anomaly['transaction_count']}"
-#     )
-
-diagnosis = diagnose_incident(provider_anomalies)
-
-print("\nIncident Diagnosis")
-print("------------------")
-
-if diagnosis:
-    print(f"Type       : {diagnosis['type']}")
-    print(f"Dimension  : {diagnosis['dimension']}")
-    print(f"Value      : {diagnosis['value']}")
-    print(f"Failure    : {diagnosis['failure_rate']:.2f}%")
-    print(f"Baseline   : {diagnosis['baseline_failure_rate']:.2f}%")
-    print(f"Increase   : {diagnosis['absolute_increase']:.2f} pp")
-    print(f"Relative   : {diagnosis['relative_increase']:.2f}x")
-else:
-    print("No incident diagnosed.")
+    return {
+        "metrics": metrics,
+        "anomalies": anomalies,
+        "provider_anomalies": provider_anomalies,
+        "diagnosis": diagnosis,
+        "impact": impact,
+        "recovery": {
+            "degraded_provider": diagnosis["value"],
+            "fallback_provider": fallback_provider,
+            "candidates": len(candidates),
+            "selected_for_retry": len(recovery_batch),
+            "attempted": verification["attempted"],
+            "recovered": verification["recovered"],
+            "recovered_amount": verification["recovered_amount"],
+            "recovery_rate": verification["recovery_rate"]
+        },
+        "verification": verification,
+        "audit": audit
+    }
 
 
-impact = calculate_impact(events, diagnosis)
+if __name__ == "__main__":
+    result = run_recovery_analysis()
 
-print("\nImpact Analysis")
-print("----------------")
+    print("\nPayment Recovery Intelligence")
+    print("============================")
 
-if impact:
-    print(f"Affected transactions : {impact['affected_transactions']}")
-    print(f"Failed transactions   : {impact['failed_transactions']}")
-    print(f"Payment value at risk : ₹{impact['failed_amount']}")
-else:
-    print("No impact calculated.")
+    print("\nPayment Summary")
+    print("----------------")
+    print(f"Total transactions : {result['metrics']['total_transactions']}")
+    print(f"Successful         : {result['metrics']['successful_transactions']}")
+    print(f"Failed             : {result['metrics']['failed_transactions']}")
+    print(f"Success rate       : {result['metrics']['success_rate']:.2f}%")
+    print(f"Failure rate       : {result['metrics']['failure_rate']:.2f}%")
 
+    print("\nIncident Diagnosis")
+    print("------------------")
 
-fallback_provider = choose_fallback_provider(
-    events,
-    diagnosis["value"]
-)
+    diagnosis = result["diagnosis"]
 
-print("\nRecovery Decision")
-print("-----------------")
-print(f"Degraded provider : {diagnosis['value']}")
-print(f"Fallback provider : {fallback_provider}")    
+    if diagnosis:
+        print(f"Type       : {diagnosis['type']}")
+        print(f"Dimension  : {diagnosis['dimension']}")
+        print(f"Value      : {diagnosis['value']}")
+        print(f"Failure    : {diagnosis['failure_rate']:.2f}%")
+        print(f"Baseline   : {diagnosis['baseline_failure_rate']:.2f}%")
+        print(f"Increase   : {diagnosis['absolute_increase']:.2f} pp")
+        print(f"Relative   : {diagnosis['relative_increase']:.2f}x")
+    else:
+        print("No incident diagnosed.")
 
-candidates = identify_recovery_candidates(events, diagnosis)
+    print("\nImpact Analysis")
+    print("----------------")
 
-recovery_batch = select_recovery_batch(candidates)
+    impact = result["impact"]
 
-print(f"Recovery candidates : {len(candidates)}")
-print(f"Selected for retry  : {len(recovery_batch)}")
+    if impact:
+        print(f"Affected transactions : {impact['affected_transactions']}")
+        print(f"Failed transactions   : {impact['failed_transactions']}")
+        print(f"Payment value at risk : ₹{impact['failed_amount']}")
 
-recovery_results = execute_recovery(
-    recovery_batch,
-    fallback_provider
-)
+    print("\nRecovery")
+    print("----------------")
 
-recovered = [
-    result
-    for result in recovery_results
-    if result["status"] == "recovered"
-]
+    recovery = result["recovery"]
 
-recovered_amount = sum(
-    result["amount"]
-    for result in recovered
-)
+    if recovery:
+        print(f"Degraded provider : {recovery['degraded_provider']}")
+        print(f"Fallback provider : {recovery['fallback_provider']}")
+        print(f"Recovery candidates : {recovery['candidates']}")
+        print(f"Selected for retry  : {recovery['selected_for_retry']}")
 
-print("\nRecovery Execution")
-print("------------------")
-print(f"Retry attempts    : {len(recovery_results)}")
-print(f"Recovered payments: {len(recovered)}")
-print(f"Recovered value   : ₹{recovered_amount}")
+    print("\nRecovery Verification")
+    print("---------------------")
 
-verification = verify_recovery(recovery_results)
+    verification = result["verification"]
 
-print("\nRecovery Verification")
-print("---------------------")
-print(f"Attempts         : {verification['attempted']}")
-print(f"Recovered        : {verification['recovered']}")
-print(f"Recovery rate    : {verification['recovery_rate']:.2f}%")
-print(f"Recovered value  : ₹{verification['recovered_amount']}")
+    if verification:
+        print(f"Attempts        : {verification['attempted']}")
+        print(f"Recovered       : {verification['recovered']}")
+        print(f"Recovery rate   : {verification['recovery_rate']:.2f}%")
+        print(f"Recovered value : ₹{verification['recovered_amount']}")
 
+    print("\nRecovery Audit")
+    print("--------------")
 
-audit = create_recovery_audit(
-    diagnosis,
-    fallback_provider,
-    recovery_results
-)
+    audit = result["audit"]
 
-print("\nRecovery Audit")
-print("--------------")
-print(f"Action           : {audit['action']}")
-print(f"Original provider: {audit['original_provider']}")
-print(f"Fallback provider: {audit['fallback_provider']}")
-print(f"Retry attempts   : {audit['retry_attempts']}")
-print(f"Recovered        : {audit['recovered_transactions']}")
-print(f"Recovered value  : ₹{audit['recovered_amount']}") 
+    if audit:
+        print(f"Action           : {audit['action']}")
+        print(f"Original provider: {audit['original_provider']}")
+        print(f"Fallback provider: {audit['fallback_provider']}")
+        print(f"Retry attempts   : {audit['retry_attempts']}")
+        print(f"Recovered        : {audit['recovered_transactions']}")
+        print(f"Recovered value  : ₹{audit['recovered_amount']}")
