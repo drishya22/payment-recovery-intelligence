@@ -3,8 +3,9 @@ from aggregate import aggregate_events
 from datetime import datetime
 from detector import detect_anomalies, detect_dimension_anomalies_by_window
 from diagnosis import diagnose_incident
+from impact import calculate_impact
 
-events=generate_events(1000)
+events=generate_events(10000)
 
 metrics=aggregate_events(events)
 
@@ -141,3 +142,16 @@ if diagnosis:
     print(f"Relative   : {diagnosis['relative_increase']:.2f}x")
 else:
     print("No incident diagnosed.")
+
+
+impact = calculate_impact(events, diagnosis)
+
+print("\nImpact Analysis")
+print("----------------")
+
+if impact:
+    print(f"Affected transactions : {impact['affected_transactions']}")
+    print(f"Failed transactions   : {impact['failed_transactions']}")
+    print(f"Payment value at risk : ₹{impact['failed_amount']}")
+else:
+    print("No impact calculated.")

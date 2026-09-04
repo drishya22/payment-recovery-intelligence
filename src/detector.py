@@ -148,7 +148,7 @@ def detect_dimension_anomalies(events,dimension,threshold_multiplier=2.0,min_tra
     return anomalies        
 
 
-def detect_dimension_anomalies_by_window(events,dimension,threshold_multiplier=2.0,min_absolute_increase=10.0,min_transactions=10):
+def detect_dimension_anomalies_by_window(events,dimension,threshold_multiplier=2.0,min_absolute_increase=10.0,min_transactions=10,window_minutes=30):
     """
     Detect dimension-specific anomalies inside time windows.
 
@@ -178,7 +178,7 @@ def detect_dimension_anomalies_by_window(events,dimension,threshold_multiplier=2
     if not events:
         return []
     
-    windows=create_time_windows(events)
+    windows=create_time_windows(events,window_minutes)
     dimension_values=set(getattr(event,dimension) for event in events)
 
     baselines={}

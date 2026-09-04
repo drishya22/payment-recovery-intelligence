@@ -1,7 +1,9 @@
 import math
 import random
+import uuid
 from datetime import datetime, timedelta
 from models import PaymentEvent
+
 
 METHOD_EFFECTS = {
     "upi": 0.15,
@@ -39,6 +41,11 @@ GEOGRAPHIES = [
 INTERCEPT = 3.0
 PEAK_HOUR_EFFECT = -0.10
 
+SIMULATION_START = datetime(2026, 9, 3, 9, 0, 0)
+SIMULATION_END = datetime(2026, 9, 3, 18, 0, 0)
+
+INCIDENT_START=datetime(2026,9,3,10,30,0)
+INCIDENT_END=datetime(2026,9,3,11,30,0)
 
 def sigmoid(z):
     return 1 / (1 + math.exp(-z))
@@ -112,18 +119,26 @@ def generate_events(num_events):
     events=[]
 
     current_timestamp=datetime(2026,9,3,9,0,0)
-    incident_start=datetime(2026,9,3,10,30,0)
-    incident_end=datetime(2026,9,3,11,30,0)
 
-    for trans_id in range(1,num_events+1):
-        provider_z_degraded=(incident_start<=current_timestamp<incident_end)
+    total_seconds = (
+        SIMULATION_END - SIMULATION_START
+    ).total_seconds()
+
+    target_interval = total_seconds / (num_events - 1)
+
+    for _ in range(1,num_events+1):
+        trans_id = str(uuid.uuid4())
+        provider_z_degraded=(INCIDENT_START<=current_timestamp<INCIDENT_END)
         event=generate_payment_event(
             current_timestamp,
             trans_id,
             provider_z_degraded
         )
         events.append(event)
-        time_gap=random.randint(1,60)
+        time_gap = random.uniform(
+            target_interval * 0.5,
+            target_interval * 1.5
+        )
         current_timestamp+=timedelta(seconds=time_gap)
 
         
