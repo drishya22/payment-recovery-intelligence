@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from main import run_recovery_analysis
 
 
@@ -6,6 +8,20 @@ app = FastAPI(
     title="Payment Recovery Intelligence",
     description="AI-powered payment degradation detection and revenue recovery system",
     version="1.0.0"
+)
+
+
+# Allow the React dashboard to communicate with the API.
+# The frontend and backend run on different Codespaces ports,
+# so the browser treats them as different origins.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://jubilant-space-chainsaw-69gxq95wjwpp3rv7g-5173.app.github.dev"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
