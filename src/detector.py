@@ -218,3 +218,105 @@ def detect_dimension_anomalies_by_window(events,dimension,threshold_multiplier=2
                     "transaction_count": len(dimensions_events)
                 })
     return anomalies
+
+def detect_failure_reason_anomalies(
+    events,
+    threshold_multiplier=2.0,
+    min_absolute_increase=10.0,
+    min_transactions=10,
+    window_minutes=30
+):
+    """
+    Detect time windows where a specific failure reason
+    increases significantly compared with its overall baseline.
+    """
+
+    if not events:
+        return []
+
+    windows = create_time_windows(
+        events,
+        window_minutes
+    )
+
+    reasons = set(
+        event.failure_reason
+        for event in events
+        if event.status == "failed"
+        and event.failure_reason is not None
+    )
+
+    baselines = {}
+
+    for reason in reasons:
+
+        matching_events = [
+            event
+            for event in events
+            if (
+                event.status == "failed"
+                and event.failure_reason == reason
+            )
+        ]
+
+        if len(matching_events) >= min_transactions:
+
+            baselines[reason] = (
+                len(matching_events) / len(events)
+            ) * 100
+
+    anomalies = []
+
+    for window in windows:
+
+        window_events = window["events"]
+
+        if len(window_events) < min_transactions:
+            continue
+
+        for reason, baseline_rate in baselines.items():
+
+            matching_events = [
+                event
+                for event in window_events
+                if (
+                    event.status == "failed"
+                    and event.failure_reason == reason
+                )
+            ]
+
+            if len(matching_events) < min_transactions:
+                continue
+
+            window_rate = (
+                len(matching_events)
+                / len(window_events)
+            ) * 100
+
+            threshold = baseline_rate * threshold_multiplier
+
+            absolute_increase = (
+                window_rate - baseline_rate
+            )
+
+            if (
+                window_rate > threshold
+                and absolute_increase >= min_absolute_increase
+            ):
+                anomalies.append({
+                    "start": window["start"],
+                    "end": window["end"],
+                    "failure_reason": reason,
+                    "failure_rate": window_rate,
+                    "baseline_failure_rate": baseline_rate,
+                    "threshold": threshold,
+                    "relative_increase": (
+                        window_rate / baseline_rate
+                        if baseline_rate > 0
+                        else float("inf")
+                    ),
+                    "absolute_increase": absolute_increase,
+                    "transaction_count": len(matching_events)
+                })
+
+    return anomalies
