@@ -1,3 +1,4 @@
+import random
 from generator import generate_events
 from aggregate import aggregate_events
 from detector import detect_anomalies, detect_dimension_anomalies_by_window
@@ -13,7 +14,7 @@ from recover import (
 )
 
 
-def run_recovery_analysis(num_events=10000):
+def run_recovery_analysis(num_events=10000,seed=42):
     """
     Run the complete payment recovery intelligence pipeline.
 
@@ -21,7 +22,7 @@ def run_recovery_analysis(num_events=10000):
         A structured result containing detection, diagnosis,
         impact, recovery, verification and audit information.
     """
-
+    random.seed(seed)
     # 1. Generate payment events
     events = generate_events(num_events)
 
