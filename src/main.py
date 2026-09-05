@@ -3,18 +3,22 @@ from datetime import datetime
 
 from generator import generate_events
 from aggregate import aggregate_events
+
 from detector import (
     detect_anomalies,
     detect_dimension_anomalies_by_window,
     detect_failure_reason_anomalies
 )
+
 from diagnosis import diagnose_incident
 from impact import calculate_impact
 
+from provider_health import calculate_provider_health
+from ai_reasoner import reason_about_recovery
+from recovery_policy import validate_recommendation
+
 from recover import (
-    choose_recovery_strategy,
     identify_recovery_candidates,
-    choose_fallback_provider,
     select_recovery_batch,
     execute_recovery,
     verify_recovery,
@@ -28,23 +32,11 @@ def run_recovery_analysis(
     scenario="provider_degradation"
 ):
     """
-    Run the complete payment recovery intelligence pipeline.
-
-    Args:
-        num_events: Number of synthetic payment events to generate.
-        seed: Random seed for reproducible simulation.
-        scenario: Incident scenario to simulate.
-
-    Returns:
-        A structured result containing detection, diagnosis,
-        impact, recovery, verification and audit information.
+    Run the complete payment recovery pipeline.
     """
 
+    # Keep the demo reproducible
     random.seed(seed)
-
-    # ---------------------------------------------------------
-    # 1. Generate payment events
-    # ---------------------------------------------------------
 
     events = generate_events(
         num_events=num_events,
@@ -53,26 +45,16 @@ def run_recovery_analysis(
         scenario=scenario
     )
 
-    # ---------------------------------------------------------
-    # 2. Aggregate payment metrics
-    # ---------------------------------------------------------
-
+    # Basic payment metrics
     metrics = aggregate_events(events)
 
-    # ---------------------------------------------------------
-    # 3. Detect system-wide anomalies
-    # ---------------------------------------------------------
-
+    # Detect overall spikes in failure rate
     anomalies = detect_anomalies(events)
 
-    # ---------------------------------------------------------
-    # 4. Detect dimension-specific anomalies
-    # ---------------------------------------------------------
-
+    # Check different dimensions for localized degradation.
     dimension_anomalies = []
 
     for dimension in ["provider", "bank", "method", "geo"]:
-
         detected = detect_dimension_anomalies_by_window(
             events,
             dimension=dimension
@@ -80,18 +62,14 @@ def run_recovery_analysis(
 
         dimension_anomalies.extend(detected)
 
-    # ---------------------------------------------------------
-    # 5. Detect failure-reason anomalies
-    # ---------------------------------------------------------
-
+    # Look for spikes in specific failure reasons,
+    # such as payment timeouts or bank errors.
     failure_reason_anomalies = detect_failure_reason_anomalies(
         events
     )
 
-    # ---------------------------------------------------------
-    # 6. Diagnose the incident
-    # ---------------------------------------------------------
-
+    # Combine the detected signals and determine
+    # the most likely incident.
     diagnosis = diagnose_incident(
         dimension_anomalies,
         failure_reason_anomalies
@@ -106,61 +84,60 @@ def run_recovery_analysis(
             "failure_reason_anomalies": failure_reason_anomalies,
             "diagnosis": None,
             "impact": None,
+            "provider_health": None,
+            "ai_recommendation": None,
+            "policy": None,
             "recovery": None,
             "verification": None,
             "audit": None
         }
 
-    # ---------------------------------------------------------
-    # 7. Calculate impact
-    # ---------------------------------------------------------
-
+    # Estimate how much payment value was affected.
     impact = calculate_impact(
         events,
         diagnosis
     )
 
-    # ---------------------------------------------------------
-    # 8. Choose recovery strategy
-    # ---------------------------------------------------------
+    # Calculate provider health from the observed payment data.
+    provider_health = calculate_provider_health(events)
 
-    strategy = choose_recovery_strategy(
-        diagnosis
+    recovery_options = [
+        "retry_with_fallback_provider",
+        "retry_after_delay",
+        "recommend_alternate_method",
+        "do_nothing"
+    ]
+
+    # Gemini reasons over the evidence and recommends
+    # the most appropriate recovery action.
+    ai_recommendation = reason_about_recovery(
+        diagnosis=diagnosis,
+        impact=impact,
+        provider_health=provider_health,
+        recovery_options=recovery_options
     )
 
-    # ---------------------------------------------------------
-    # 9. Choose fallback provider if required
-    # ---------------------------------------------------------
+    # The AI recommendation is checked by deterministic
+    # recovery rules before anything can be executed.
+    policy_result = validate_recommendation(
+        ai_recommendation=ai_recommendation,
+        diagnosis=diagnosis,
+        provider_health=provider_health
+    )
 
-    fallback_provider = None
+    strategy = policy_result["strategy"]
+    fallback_provider = policy_result["provider"]
 
-    if strategy == "retry_with_fallback_provider":
-
-        fallback_provider = choose_fallback_provider(
-            events,
-            diagnosis["value"]
-        )
-
-    # ---------------------------------------------------------
-    # 10. Identify recovery candidates
-    # ---------------------------------------------------------
-
+    # Find failed payments affected by the diagnosed incident.
     candidates = identify_recovery_candidates(
         events,
         diagnosis
     )
 
-    # ---------------------------------------------------------
-    # 11. Apply bounded recovery limit
-    # ---------------------------------------------------------
-
+    # Keep the recovery batch bounded.
     recovery_batch = select_recovery_batch(
         candidates
     )
-
-    # ---------------------------------------------------------
-    # 12. Execute recovery
-    # ---------------------------------------------------------
 
     recovery_results = execute_recovery(
         recovery_batch,
@@ -168,18 +145,12 @@ def run_recovery_analysis(
         fallback_provider
     )
 
-    # ---------------------------------------------------------
-    # 13. Verify recovery
-    # ---------------------------------------------------------
-
+    # Measure the actual recovery outcome.
     verification = verify_recovery(
         recovery_results
     )
 
-    # ---------------------------------------------------------
-    # 14. Create audit record
-    # ---------------------------------------------------------
-
+    # Store the recovery decision and result for auditing.
     audit = create_recovery_audit(
         diagnosis,
         strategy,
@@ -187,25 +158,17 @@ def run_recovery_analysis(
         recovery_results
     )
 
-    # ---------------------------------------------------------
-    # 15. Return complete analysis
-    # ---------------------------------------------------------
-
     return {
         "scenario": scenario,
-
         "metrics": metrics,
-
         "anomalies": anomalies,
-
         "dimension_anomalies": dimension_anomalies,
-
         "failure_reason_anomalies": failure_reason_anomalies,
-
         "diagnosis": diagnosis,
-
         "impact": impact,
-
+        "provider_health": provider_health,
+        "ai_recommendation": ai_recommendation,
+        "policy": policy_result,
         "recovery": {
             "strategy": strategy,
             "affected_value": diagnosis["value"],
@@ -217,9 +180,7 @@ def run_recovery_analysis(
             "recovered_amount": verification["recovered_amount"],
             "recovery_rate": verification["recovery_rate"]
         },
-
         "verification": verification,
-
         "audit": audit
     }
 
@@ -232,10 +193,6 @@ if __name__ == "__main__":
 
     print("\nPayment Recovery Intelligence")
     print("============================")
-
-    # ---------------------------------------------------------
-    # Payment Summary
-    # ---------------------------------------------------------
 
     print("\nPayment Summary")
     print("----------------")
@@ -265,59 +222,21 @@ if __name__ == "__main__":
         f"{result['metrics']['failure_rate']:.2f}%"
     )
 
-    # ---------------------------------------------------------
-    # Incident Diagnosis
-    # ---------------------------------------------------------
-
     print("\nIncident Diagnosis")
     print("------------------")
 
     diagnosis = result["diagnosis"]
 
     if diagnosis:
-
-        print(
-            f"Type       : "
-            f"{diagnosis['type']}"
-        )
-
-        print(
-            f"Dimension  : "
-            f"{diagnosis['dimension']}"
-        )
-
-        print(
-            f"Value      : "
-            f"{diagnosis['value']}"
-        )
-
-        print(
-            f"Failure    : "
-            f"{diagnosis['failure_rate']:.2f}%"
-        )
-
-        print(
-            f"Baseline   : "
-            f"{diagnosis['baseline_failure_rate']:.2f}%"
-        )
-
-        print(
-            f"Increase   : "
-            f"{diagnosis['absolute_increase']:.2f} pp"
-        )
-
-        print(
-            f"Relative   : "
-            f"{diagnosis['relative_increase']:.2f}x"
-        )
-
+        print(f"Type       : {diagnosis['type']}")
+        print(f"Dimension  : {diagnosis['dimension']}")
+        print(f"Value      : {diagnosis['value']}")
+        print(f"Failure    : {diagnosis['failure_rate']:.2f}%")
+        print(f"Baseline   : {diagnosis['baseline_failure_rate']:.2f}%")
+        print(f"Increase   : {diagnosis['absolute_increase']:.2f} pp")
+        print(f"Relative   : {diagnosis['relative_increase']:.2f}x")
     else:
-
         print("No incident diagnosed.")
-
-    # ---------------------------------------------------------
-    # Impact Analysis
-    # ---------------------------------------------------------
 
     print("\nImpact Analysis")
     print("----------------")
@@ -325,7 +244,6 @@ if __name__ == "__main__":
     impact = result["impact"]
 
     if impact:
-
         print(
             f"Affected transactions : "
             f"{impact['affected_transactions']}"
@@ -341,9 +259,67 @@ if __name__ == "__main__":
             f"₹{impact['failed_amount']}"
         )
 
-    # ---------------------------------------------------------
-    # Recovery
-    # ---------------------------------------------------------
+    print("\nAI Recovery Reasoning")
+    print("---------------------")
+
+    ai_recommendation = result["ai_recommendation"]
+
+    if ai_recommendation:
+        print(
+            f"Recommended strategy : "
+            f"{ai_recommendation['recommended_strategy']}"
+        )
+
+        print(
+            f"Recommended provider : "
+            f"{ai_recommendation['recommended_provider']}"
+        )
+
+        print(
+            f"Reasoning            : "
+            f"{ai_recommendation['reasoning']}"
+        )
+
+        print(
+            f"Confidence           : "
+            f"{ai_recommendation['confidence']}"
+        )
+
+        print(
+            f"Risk                 : "
+            f"{ai_recommendation['risk']}"
+        )
+
+        print(
+            f"Expected recovery    : "
+            f"{ai_recommendation['expected_recovery']}"
+        )
+
+    print("\nRecovery Policy")
+    print("----------------")
+
+    policy = result["policy"]
+
+    if policy:
+        print(
+            f"Approved             : "
+            f"{policy['approved']}"
+        )
+
+        print(
+            f"Strategy             : "
+            f"{policy['strategy']}"
+        )
+
+        print(
+            f"Provider             : "
+            f"{policy['provider']}"
+        )
+
+        print(
+            f"Policy decision      : "
+            f"{policy['reason']}"
+        )
 
     print("\nRecovery")
     print("----------------")
@@ -351,7 +327,6 @@ if __name__ == "__main__":
     recovery = result["recovery"]
 
     if recovery:
-
         print(
             f"Strategy            : "
             f"{recovery['strategy']}"
@@ -377,17 +352,12 @@ if __name__ == "__main__":
             f"{recovery['selected_for_retry']}"
         )
 
-    # ---------------------------------------------------------
-    # Recovery Verification
-    # ---------------------------------------------------------
-
     print("\nRecovery Verification")
     print("---------------------")
 
     verification = result["verification"]
 
     if verification:
-
         print(
             f"Attempts        : "
             f"{verification['attempted']}"
@@ -408,17 +378,12 @@ if __name__ == "__main__":
             f"₹{verification['recovered_amount']}"
         )
 
-    # ---------------------------------------------------------
-    # Recovery Audit
-    # ---------------------------------------------------------
-
     print("\nRecovery Audit")
     print("--------------")
 
     audit = result["audit"]
 
     if audit:
-
         print(
             f"Incident type     : "
             f"{audit['incident_type']}"
